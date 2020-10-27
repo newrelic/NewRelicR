@@ -7,7 +7,8 @@
 #' @param api_key your New Relic NRDB (Insights) API key
 #' @param nrql_query the NRQL query to execute
 #' @param verbose indicates status information to be printed out
-#' @param timeout the max time in milliseconds to wait for a response (default: 10,000)
+#' @param timeout the max time in seconds to wait for a response (default: 30)
+#' @param baseurl override the New Relic API endpoint, formatted with sprintf string for the NRQL query
 #'
 #' @return a data frame with the results
 #' @seealso \href{https://docs.newrelic.com/docs/insights/new-relic-insights/adding-querying-data/querying-your-data-remotely}{New Relic NRQL REST API}
@@ -19,30 +20,21 @@
 #'     nrdb_query(account_id=-1, api_key='your_nrdb_api_license_key_here',
 #'               nrql_query="SELECT count(*) from PageAction facet name")
 nrdb_query <- function(account_id, api_key, nrql_query, verbose=F,
-                       timeout=10000) {
+                       timeout=30, base_url=F) {
 
     if (verbose) message(paste("Query:", nrql_query))
-    if (account_id > 0) {
-        url <- paste("https://insights-api.newrelic.com/v1/accounts/",
-                     account_id, "/query", sep = '')
-    } else {
-        url <- 'http://mockbin.org/bin/1a422903-e564-4da6-9258-72e1d3213151'
+    if (!base_url) {
+        base_url <- paste("https://insights-api.newrelic.com/v1/accounts/",
+                     account_id, "/query?nrql=%s", sep = '')
     }
-    body <- list(account=account_id,
-                 format='json',
-                 query=nrql_query,
-                 restrictions=list(isNewRelicAdmin=T, externalTimeoutMilliseconds=timeout),
-                 jsonVersion=1,
-                 metadata=list(hostUser=Sys.getenv('USER'),
-                               hostname=system('hostname', intern=T),
-                               origin='NewRelicR libray'))
+    url <- sprintf(base_url, URLencode(nrql_query))
+
     headers <- c('X-Dirac-Client-Origin'='NewRelicR library',
+                    'X-Query-Key'=api_key,
                     "Content-Type"="application/json")
-    response <- httr::POST(url,
-                           body=body,
-                           encode='json',
-#                           httr::verbose(data_in=F, data_out=F, info=F),
-#                           httr::config(timeout=30),
+    response <- httr::GET(url,
+                           httr::verbose(data_in=verbose, data_out=verbose, info=verbose),
+                           httr::config(timeout=timeout),
                            httr::accept("application/json"),
                            httr::add_headers(headers))
     result <- httr::content(response, type='application/json')
